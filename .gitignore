@@ -9,4 +9,7 @@ wheels/
 # Virtual environments
 .venv
 
-data
+# Root data directory and DuckDB files
+/data
+*.duckdb
+*.duckdb.wal

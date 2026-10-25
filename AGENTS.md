@@ -16,6 +16,7 @@ O agente atua como Engenheiro de Software Sênior e Especialista em Inteligênci
   * Python `>=3.12`
   * Gerenciador de dependências e ambiente virtual: [`uv`](https://github.com/astral-sh/uv) (`uv run`, `uv add`, `uv.lock`)
 * **Processamento de Sinais e Dados Biomédicos**:
+  * `duckdb`: Banco relacional colunar embutido de alta performance para metadados, splits e laudos
   * `wfdb`: leitura de formatos Waveform Database (`.hea`, `.dat`)
   * `scipy.signal`: filtros passa-faixa Butterworth, filtros Notch, reamostragem
   * `numpy` e `pandas`: manipulação vetorial e tabular de dados

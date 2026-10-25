@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "duckdb>=2.0.0",
     "matplotlib>=3.11.2",
     "numpy>=2.5.4",
     "pandas>=3.0.6",
@@ -22,11 +23,15 @@ dev = [
 ]
 
 
+[tool.ruff.lint]
+ignore = ["E402"]
+
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "standard"
 venvPath = "."
 venv = ".venv"
+extraPaths = ["src"]
 
 include = ["."]
 exclude = [
