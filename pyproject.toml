@@ -1,0 +1,39 @@
+[project]
+name = "server"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "matplotlib>=3.11.2",
+    "numpy>=2.5.4",
+    "pandas>=3.0.6",
+    "plotly>=7.1.0",
+    "streamlit>=1.66.0",
+    "wfdb>=4.3.1",
+]
+
+[dependency-groups]
+dev = [
+    "commitizen>=4.19.3",
+    "pre-commit>=4.7.0",
+    "pyright>=1.1.414",
+    "ruff>=0.17.1",
+]
+
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"
+
+include = ["."]
+exclude = [
+    "**/__pycache__",
+    ".venv",
+    ".git",
+    "data",
+    "build",
+    "dist",
+]
