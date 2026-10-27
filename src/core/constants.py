@@ -16,6 +16,7 @@ DATA_DIR = PROJECT_ROOT / "data"
 DEFAULT_DB_PATH = DATA_DIR / "cardiopredict.duckdb"
 MIMIC_DIR = DATA_DIR / "mimic-iv-ecg" / "1.0"
 PTBXL_DIR = DATA_DIR / "ptb-xl"
+PROCESSED_DATA_DIR = DATA_DIR / "processed"
 
 # =============================================================================
 # 2. Convenções e Padronização de Sinal (ECG 12 Derivações)
@@ -49,6 +50,52 @@ UNIT_TO_MV_FACTOR: dict[str, float] = {
     "volt": 1e3,
     "volts": 1e3,
 }
+
+# Limites de qualidade e integridade física de sinal
+FLATLINE_STD_MIN_MV: float = 1e-4
+MAX_ALLOWED_NAN_RATIO: float = 0.05
+ABERRANT_MAX_AMPLITUDE_MV: float = 15.0
+
+# =============================================================================
+# 3. Taxonomia e Classes Alvo Multilabel (5 Superclasses + 25 Subclasses)
+# =============================================================================
+SUPERCLASSES: tuple[str, ...] = (
+    "NORM",  # Normal ECG
+    "MI",  # Myocardial Infarction
+    "STTC",  # ST/T Change
+    "CD",  # Conduction Disturbance
+    "HYP",  # Hypertrophy
+)
+
+SUBCLASSES: tuple[str, ...] = (
+    "AFIB",  # Atrial Fibrillation
+    "AFLT",  # Atrial Flutter
+    "SR",  # Sinus Rhythm
+    "SBRAD",  # Sinus Bradycardia
+    "STACH",  # Sinus Tachycardia
+    "PVC",  # Premature Ventricular Contractions
+    "PAC",  # Premature Atrial Contractions
+    "AMI",  # Anterior / Anteroseptal MI
+    "IMI",  # Inferior MI
+    "LMI",  # Lateral MI
+    "STEMI",  # ST-Elevation MI (Acute urgency marker)
+    "CLBBB",  # Complete Left Bundle Branch Block
+    "CRBBB",  # Complete Right Bundle Branch Block
+    "IRBBB",  # Incomplete Right Bundle Branch Block
+    "LAFB",  # Left Anterior Fascicular Block
+    "1AVB",  # 1st Degree AV Block
+    "2AVB",  # 2nd Degree AV Block (Mobitz I / II)
+    "3AVB",  # Complete / 3rd Degree AV Block
+    "IVCD",  # Intraventricular Conduction Delay
+    "LVH",  # Left Ventricular Hypertrophy
+    "RVH",  # Right Ventricular Hypertrophy
+    "STTC_ISCA",  # Anterior Ischemic ST/T changes
+    "STTC_ISCI",  # Inferior Ischemic ST/T changes
+    "STD",  # ST Depression
+    "STE",  # ST Elevation
+)
+
+TARGET_CLASSES: tuple[str, ...] = SUPERCLASSES + SUBCLASSES
 
 # =============================================================================
 # 3. Limites Fisiológicos Humanos (Diretrizes AHA/ACCF/HRS)

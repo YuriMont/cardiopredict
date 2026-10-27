@@ -66,19 +66,22 @@ Se algum erro for reportado, corrija-o imediatamente antes de comunicar a conclu
 
 O repositório disponibiliza as seguintes habilidades (`skills`) em `.agents/skills/`. O agente deve ativá-las e respeitar seus procedimentos:
 
-* **[systematic-debugging](file:///home/yuri-monteiro/Documentos/projetos/cadiopredict20/server/.agents/skills/systematic-debugging/SKILL.md)**:
+* **[brainstorming](.agents/skills/brainstorming/SKILL.md)**:
+  * *Quando usar*: Antes de qualquer trabalho criativo — criação de novas features, adição de componentes, modificação de comportamento ou planejamento de novas funcionalidades.
+  * *Regra*: Não iniciar a implementação prematuramente; explorar o contexto, formular perguntas para clarificar requisitos, propor abordagens alternativas e alinhar o design doc antes de codificar.
+* **[systematic-debugging](.agents/skills/systematic-debugging/SKILL.md)**:
   * *Quando usar*: Ao encontrar qualquer falha em testes, erro de execução, regressão ou comportamento anômalo de sinal/rede.
   * *Regra*: Não adivinhe soluções nem faça alterações aleatórias de código sem antes formular e testar hipóteses conforme o roteiro do skill.
-* **[code-review](file:///home/yuri-monteiro/Documentos/projetos/cadiopredict20/server/.agents/skills/code-review/SKILL.md)**:
+* **[code-review](.agents/skills/code-review/SKILL.md)**:
   * *Quando usar*: Ao criar novos módulos significativos ou antes de consolidar grandes refatorações.
   * *Regra*: Realizar verificação dupla (conformidade de padrões e aderência à especificação).
-* **[grill-me](file:///home/yuri-monteiro/Documentos/projetos/cadiopredict20/server/.agents/skills/grill-me/SKILL.md)**:
+* **[grill-me](.agents/skills/grill-me/SKILL.md)**:
   * *Quando usar*: Quando houver decisões ambíguas de arquitetura clínica ou modelagem, entrevistando interativamente o usuário para alinhar requisitos.
-* **[agent-browser](file:///home/yuri-monteiro/Documentos/projetos/cadiopredict20/server/.agents/skills/agent-browser/SKILL.md)** / **[browser-use](file:///home/yuri-monteiro/Documentos/projetos/cadiopredict20/server/.agents/skills/browser-use/SKILL.md)**:
+* **[agent-browser](.agents/skills/agent-browser/SKILL.md)** / **[browser-use](.agents/skills/browser-use/SKILL.md)**:
   * *Quando usar*: Para validação de interface do dashboard em Streamlit (`src/dashboard.py`), inspeção visual de componentes e testes E2E.
-* **[find-skills](file:///home/yuri-monteiro/Documentos/projetos/cadiopredict20/server/.agents/skills/find-skills/SKILL.md)**:
+* **[find-skills](.agents/skills/find-skills/SKILL.md)**:
   * *Quando usar*: Caso o usuário ou o agente precise estender os recursos com novas ferramentas especializadas.
-* **[belt](file:///home/yuri-monteiro/Documentos/projetos/cadiopredict20/server/.agents/skills/belt/SKILL.md)** & **[web-search](file:///home/yuri-monteiro/Documentos/projetos/cadiopredict20/server/.agents/skills/web-search/SKILL.md)**:
+* **[belt](.agents/skills/belt/SKILL.md)** & **[web-search](.agents/skills/web-search/SKILL.md)**:
   * *Quando usar*: Para pesquisas em ontologias médicas atualizadas (SCP-ECG, SNOMED-CT) ou documentação de APIs.
 
 ---

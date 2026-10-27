@@ -13,6 +13,12 @@
       "skillPath": ".agents/skills/belt/SKILL.md",
       "computedHash": "14ea35fe7fe2cae2a1fb7ae9235d8349fc6653d2d3ad53e3f8a00943c1f665a7"
     },
+    "brainstorming": {
+      "source": "obra/superpowers",
+      "sourceType": "github",
+      "skillPath": "skills/brainstorming/SKILL.md",
+      "computedHash": "759eaa3b4b3d06d9e1c98c24bcd58eeb4d2faf724b3239f81e8559aa41e28fdd"
+    },
     "browser-use": {
       "source": "browser-use/browser-use",
       "sourceType": "github",

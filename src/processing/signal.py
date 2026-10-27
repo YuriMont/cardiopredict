@@ -64,11 +64,22 @@ def standardize_amplitude_units_to_mv(
 
 
 def reorder_leads(signal: np.ndarray, sig_name: list[str]) -> np.ndarray:
-    """Padroniza a ordem das 12 derivações para STANDARD_LEADS."""
+    """Padroniza a ordem das 12 derivações para STANDARD_LEADS (insensível a maiúsculas/minúsculas)."""
     if sig_name == STANDARD_LEADS:
         return signal
 
-    indices = [sig_name.index(lead) for lead in STANDARD_LEADS]
+    # Normalização para maiúsculas para suportar 'AVR', 'aVR', 'avr' (ex.: PTB-XL vs MIMIC)
+    clean_names = [str(s).strip().upper() for s in sig_name]
+    target_names = [lead.upper() for lead in STANDARD_LEADS]
+
+    indices: list[int] = []
+    for target in target_names:
+        if target not in clean_names:
+            raise ValueError(
+                f"Derivação obrigatória '{target}' não encontrada no exame (disponíveis: {sig_name})"
+            )
+        indices.append(clean_names.index(target))
+
     return signal[:, indices]
 
 

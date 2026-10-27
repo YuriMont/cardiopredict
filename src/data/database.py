@@ -226,22 +226,22 @@ def migrate_ptbxl(
             info = scp_ref.loc[code] if code in scp_ref.index else None
             diag_class = (
                 str(info["diagnostic_class"])
-                if info is not None and pd.notna(info["diagnostic_class"])
+                if info is not None and bool(pd.notna(info["diagnostic_class"]))
                 else None
             )
             diag_subclass = (
                 str(info["diagnostic_subclass"])
-                if info is not None and pd.notna(info["diagnostic_subclass"])
+                if info is not None and bool(pd.notna(info["diagnostic_subclass"]))
                 else None
             )
             desc = (
                 str(info["description"])
-                if info is not None and pd.notna(info["description"])
+                if info is not None and bool(pd.notna(info["description"]))
                 else code
             )
             cat = (
                 str(info["Statement Category"])
-                if info is not None and pd.notna(info["Statement Category"])
+                if info is not None and bool(pd.notna(info["Statement Category"]))
                 else None
             )
 

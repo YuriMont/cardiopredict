@@ -95,6 +95,7 @@ uv run python src/visualise_patient.py
 2. **Derivações**: Ordem universal padronizada: `I, II, III, aVR, aVL, aVF, V1, V2, V3, V4, V5, V6`.
 3. **Escala Física**: Conforme padrão WFDB convertido para milivolts (mV).
 4. **Filtragem Digital**: Filtro passa-faixa (0,5 Hz a 45 Hz) para mitigação conjunta de oscilação da linha de base e eliminação de interferência das redes elétricas americana (60 Hz) e europeia (50 Hz).
+5. **Documentação Completa da Esteira**: Consulte o guia detalhado em [**Pipeline de Processamento e Tratamento de Dados**](docs/obsidian/pipeline_processamento_dados.md).
 
 ---
 
@@ -119,5 +120,7 @@ uv run pre-commit run --all-files
 ---
 
 ## 📄 Licença e Documentação Adicional
+* **Pipeline de Processamento e Tratamento de Dados**: Consulte [docs/obsidian/pipeline_processamento_dados.md](docs/obsidian/pipeline_processamento_dados.md).
+* **Portal de Documentação e Base de Conhecimento**: Consulte [docs/README.md](docs/README.md).
 * **Decisões Estratégicas de Negócio e Produto**: Consulte o [PRD.md](PRD.md).
 * **Diretrizes e Regras para Agentes**: Consulte o [AGENTS.md](AGENTS.md).
