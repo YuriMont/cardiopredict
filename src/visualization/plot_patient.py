@@ -13,9 +13,9 @@ if str(SRC_DIR) not in sys.path:
 import matplotlib.pyplot as plt
 import wfdb
 
-from core.constants import DATA_DIR
 from data.database import get_connection
 from data.reader import patients_records, subject_id
+from processing.signal import load_raw_record
 
 
 def plot_single_patient_exam() -> None:
@@ -25,19 +25,7 @@ def plot_single_patient_exam() -> None:
         return
 
     exam = patients_records.iloc[0]
-    raw_path = Path(exam["path"])
-    record_path = (
-        raw_path
-        if raw_path.exists() or str(raw_path).startswith("data")
-        else DATA_DIR / raw_path
-    )
-
-    if record_path.suffix in {".hea", ".dat"}:
-        record_path = record_path.with_suffix("")
-
-    record = wfdb.rdrecord(str(record_path))
-    if isinstance(record, wfdb.MultiRecord):
-        record = record.multi_to_single(physical=True)
+    record = load_raw_record(exam["path"])
 
     if record.p_signal is not None:
         print(f"Identificador do exame: {exam['study_id']}")

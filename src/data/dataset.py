@@ -44,6 +44,8 @@ class CardioECGDataset(Dataset[tuple[torch.Tensor, torch.Tensor, torch.Tensor]])
         self,
         split: str = "train",
         processed_dir: Path | str | None = None,
+        standardize: bool = False,
+        standardize_mode: str = "per_lead",
         transform: (
             Callable[
                 [tuple[torch.Tensor, torch.Tensor, torch.Tensor]],
@@ -65,20 +67,32 @@ class CardioECGDataset(Dataset[tuple[torch.Tensor, torch.Tensor, torch.Tensor]])
                 f"Execute src/data/exporter_h5.py para gerar os dados."
             )
 
+        self.standardize = standardize
+        self.standardize_mode = standardize_mode
         self.transform = transform
         self._h5_file: h5py.File | None = None
+        self._pos_weights: torch.Tensor | None = None
 
-        # Lê o tamanho do dataset abrindo e fechando uma conexão inicial
+        # Lê o tamanho do dataset e metadados abrindo e fechando conexão inicial
         with h5py.File(str(self.h5_path), "r") as f:
             ds_sig = f["signals"]
             assert isinstance(ds_sig, h5py.Dataset)
             self._length: int = int(ds_sig.shape[0])
+            if "pos_weights" in f.attrs:
+                self._pos_weights = torch.from_numpy(
+                    np.asarray(f.attrs["pos_weights"], dtype=np.float32)
+                )
 
     def _get_h5(self) -> h5py.File:
         """Abertura tardia (lazy) por processo filho, garantindo compatibilidade com DataLoader multiprocessing."""
         if self._h5_file is None:
             self._h5_file = h5py.File(str(self.h5_path), "r")
         return self._h5_file
+
+    @property
+    def pos_weights(self) -> torch.Tensor | None:
+        """Pesos de classes positivas para balanceamento em BCEWithLogitsLoss."""
+        return self._pos_weights
 
     def __len__(self) -> int:
         return self._length
@@ -107,10 +121,21 @@ class CardioECGDataset(Dataset[tuple[torch.Tensor, torch.Tensor, torch.Tensor]])
         raw_weight: np.ndarray = ds_wgh[idx]
 
         # Converte para Tensores PyTorch
-        # Transpõe o sinal de (5000, 12) para (12, 5000) [Channels-first para Conv1D]
+        # Transpõe o sinal de (5000, 12) para (12, 5000) [Channels-first para Conv1D/SSM]
         signal_tensor = torch.from_numpy(raw_signal).float().permute(1, 0).contiguous()
         label_tensor = torch.from_numpy(raw_label).float()
         weight_tensor = torch.from_numpy(raw_weight).float()
+
+        # Normalização opcional Z-score por derivação ou global
+        if self.standardize:
+            if self.standardize_mode == "per_lead":
+                mean = signal_tensor.mean(dim=-1, keepdim=True)
+                std = signal_tensor.std(dim=-1, keepdim=True).clamp_min(1e-6)
+                signal_tensor = (signal_tensor - mean) / std
+            elif self.standardize_mode == "global":
+                mean = signal_tensor.mean()
+                std = signal_tensor.std().clamp_min(1e-6)
+                signal_tensor = (signal_tensor - mean) / std
 
         item = (signal_tensor, label_tensor, weight_tensor)
         if self.transform is not None:

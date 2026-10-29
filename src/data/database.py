@@ -309,6 +309,13 @@ def migrate_mimic(
     """)
 
     # 2. Carregar Registros de ECG do MIMIC (com split estratificado por paciente: zero data leakage)
+    has_subfolder_1_0 = (mimic_dir / "1.0" / "files").exists() or (
+        DATA_DIR / "mimic-iv-ecg" / "1.0" / "files"
+    ).exists()
+    mimic_prefix = (
+        "data/mimic-iv-ecg/1.0/" if has_subfolder_1_0 else "data/mimic-iv-ecg/"
+    )
+
     con.execute(f"""
         INSERT OR REPLACE INTO ecg_records
         SELECT
@@ -326,7 +333,7 @@ def migrate_mimic(
                 WHEN (subject_id % 10) = 8 THEN 'val'
                 ELSE 'test'
             END AS split,
-            'data/mimic-iv-ecg/1.0/' || path AS waveform_relative_path
+            '{mimic_prefix}' || path AS waveform_relative_path
         FROM read_csv_auto('{record_list_csv}')
     """)
 
@@ -448,8 +455,13 @@ def migrate_all(
     ptb_counts = migrate_ptbxl(con, ptbxl_dir=base_data / "ptb-xl")
     print(f"    PTB-XL concluído: {ptb_counts}")
 
-    print(f"--> Migrando MIMIC-IV-ECG de {base_data / 'mimic-iv-ecg' / '1.0'}...")
-    mimic_counts = migrate_mimic(con, mimic_dir=base_data / "mimic-iv-ecg" / "1.0")
+    mimic_path = (
+        base_data / "mimic-iv-ecg" / "1.0"
+        if (base_data / "mimic-iv-ecg" / "1.0").exists()
+        else base_data / "mimic-iv-ecg"
+    )
+    print(f"--> Migrando MIMIC-IV-ECG de {mimic_path}...")
+    mimic_counts = migrate_mimic(con, mimic_dir=mimic_path)
     print(f"    MIMIC-IV-ECG concluído: {mimic_counts}")
 
     total_patients = int(con.execute("SELECT COUNT(*) FROM patients").fetchall()[0][0])

@@ -173,6 +173,8 @@ def verify_zero_patient_leakage(
 def main() -> None:
     csv_path = MIMIC_DIR / "machine_measurements.csv"
     if not csv_path.exists():
+        csv_path = DATA_DIR / "mimic-iv-ecg" / "machine_measurements.csv"
+    if not csv_path.exists():
         csv_path = DATA_DIR / "machine_measurements.csv"
 
     if csv_path.exists():

@@ -14,7 +14,12 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 DEFAULT_DB_PATH = DATA_DIR / "cardiopredict.duckdb"
-MIMIC_DIR = DATA_DIR / "mimic-iv-ecg" / "1.0"
+_mimic_candidate = DATA_DIR / "mimic-iv-ecg"
+MIMIC_DIR = (
+    _mimic_candidate / "1.0"
+    if (_mimic_candidate / "1.0").exists()
+    else _mimic_candidate
+)
 PTBXL_DIR = DATA_DIR / "ptb-xl"
 PROCESSED_DATA_DIR = DATA_DIR / "processed"
 

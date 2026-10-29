@@ -14,7 +14,7 @@ if str(SRC_DIR) not in sys.path:
 
 import numpy as np
 import wfdb
-from scipy.signal import butter, iirnotch, sosfiltfilt, tf2sos
+from scipy.signal import butter, iirnotch, resample, sosfiltfilt, tf2sos
 
 from core.constants import DATA_DIR, STANDARD_LEADS, UNIT_TO_MV_FACTOR
 
@@ -34,6 +34,17 @@ def load_raw_record(record_rel_path: str | Path) -> wfdb.Record:
     full_path = p if (p.exists() or str(p).startswith("data")) else DATA_DIR / p
     if full_path.suffix in {".hea", ".dat"}:
         full_path = full_path.with_suffix("")
+
+    if not full_path.with_suffix(".hea").exists():
+        path_str = str(full_path)
+        if "/1.0/" in path_str:
+            alt = Path(path_str.replace("/1.0/", "/"))
+            if alt.with_suffix(".hea").exists():
+                full_path = alt
+        elif "/mimic-iv-ecg/" in path_str:
+            alt = Path(path_str.replace("/mimic-iv-ecg/", "/mimic-iv-ecg/1.0/"))
+            if alt.with_suffix(".hea").exists():
+                full_path = alt
 
     record = wfdb.rdrecord(str(full_path), physical=True)
     if isinstance(record, wfdb.MultiRecord):
@@ -86,30 +97,51 @@ def reorder_leads(signal: np.ndarray, sig_name: list[str]) -> np.ndarray:
 def interpolate_missing_and_validate(
     signal: np.ndarray,
 ) -> tuple[np.ndarray, bool]:
-    """Verifica a integridade da onda e interpola pequenos trechos NaN (< 5%)."""
+    """Verifica a integridade da onda e interpola pequenos trechos não finitos (NaN/Inf) (< 5%)."""
     cleaned = signal.copy()
     _, n_leads = cleaned.shape
 
     for lead_idx in range(n_leads):
         lead_sig = cleaned[:, lead_idx]
-        nan_mask = np.isnan(lead_sig)
-        nan_ratio = float(nan_mask.mean())
+        invalid_mask = ~np.isfinite(lead_sig)
+        invalid_ratio = float(invalid_mask.mean())
 
-        if nan_ratio > MAX_NAN_RATIO:
+        if invalid_ratio > MAX_NAN_RATIO:
             return cleaned, False
 
-        if nan_mask.any():
-            valid_idx = np.flatnonzero(~nan_mask)
-            missing_idx = np.flatnonzero(nan_mask)
+        if invalid_mask.any():
+            valid_idx = np.flatnonzero(~invalid_mask)
+            missing_idx = np.flatnonzero(invalid_mask)
             if len(valid_idx) == 0:
                 return cleaned, False
-            lead_sig[nan_mask] = np.interp(missing_idx, valid_idx, lead_sig[valid_idx])
+            lead_sig[invalid_mask] = np.interp(
+                missing_idx, valid_idx, lead_sig[valid_idx]
+            )
             cleaned[:, lead_idx] = lead_sig
 
         if float(np.std(cleaned[:, lead_idx])) < MIN_STD_MV:
             return cleaned, False
 
     return cleaned, True
+
+
+def resample_ecg_signal(
+    signal: np.ndarray,
+    orig_fs: float,
+    target_fs: float = 500.0,
+    target_samples: int = 5000,
+) -> np.ndarray:
+    """Reamostra o sinal multicanal de ECG para target_fs e target_samples (padrão 500 Hz, 10s = 5000 amostras).
+
+    Garante fidelidade morfológica sem truncamento destrutivo ou zero-padding que simula assistolia.
+    """
+    n_samples, _ = signal.shape
+    if orig_fs == target_fs and n_samples == target_samples:
+        return signal.astype(np.float32, copy=False)
+
+    # Reamostragem via interpolação de Fourier (scipy.signal.resample)
+    resampled = resample(signal, target_samples, axis=0)
+    return np.asarray(resampled, dtype=np.float32)
 
 
 def remove_baseline_wander_highpass(
@@ -142,10 +174,10 @@ def remove_powerline_interference_notch(
 def remove_high_freq_muscle_noise_lowpass(
     signal: np.ndarray,
     fs: float = 500.0,
-    cutoff_hz: float = 40.0,
+    cutoff_hz: float = 45.0,
     order: int = 4,
 ) -> np.ndarray:
-    """Passa-Baixa Butterworth (40 Hz): remove ruído muscular EMG."""
+    """Passa-Baixa Butterworth (45 Hz): remove ruído muscular EMG."""
     nyquist = 0.5 * fs
     sos = butter(order, cutoff_hz / nyquist, btype="lowpass", output="sos")
     return np.asarray(sosfiltfilt(sos, signal, axis=0), dtype=np.float32)
@@ -153,43 +185,54 @@ def remove_high_freq_muscle_noise_lowpass(
 
 def preprocess_ecg_for_cnn(
     record: wfdb.Record,
+    target_fs: float = 500.0,
+    target_samples: int = 5000,
 ) -> tuple[np.ndarray, dict[str, np.ndarray], bool]:
     """Executa o pipeline completo de pré-processamento do ECG em mV."""
     if record.p_signal is None or record.sig_name is None:
-        empty = np.zeros((5000, 12), dtype=np.float32)
+        empty = np.zeros((target_samples, 12), dtype=np.float32)
         return empty, {}, False
 
-    fs_val = float(record.fs or 500.0)
+    fs_val = float(record.fs or target_fs)
 
     # 1. Padronizar unidade física para mV e reordenar derivações
     step1_mv, _ = standardize_amplitude_units_to_mv(record.p_signal, record.units)
     step1_reordered = reorder_leads(step1_mv, list(record.sig_name))
 
-    # 2. Interpolação de NaNs e validação
+    # 2. Interpolação de valores não finitos (NaN/Inf) e validação de qualidade (flatline/incompletude)
     step2_interpolated, is_valid = interpolate_missing_and_validate(step1_reordered)
     if not is_valid:
-        empty = np.zeros((step1_reordered.shape[0], 12), dtype=np.float32)
+        empty = np.zeros((target_samples, 12), dtype=np.float32)
         return empty, {"raw_mv": step1_reordered}, False
 
-    # 3. Corte de picos mecânicos extremos (> ±10 mV)
+    # 3. Corte de picos mecânicos extremos (> ±10 mV) antes de reamostrar
     step3_clipped = np.clip(step2_interpolated, -MAX_PHYSICAL_MV, MAX_PHYSICAL_MV)
 
-    # 4. Filtragem digital
-    step4a_no_baseline = remove_baseline_wander_highpass(step3_clipped, fs=fs_val)
-    step4b_no_powerline = remove_powerline_interference_notch(
-        step4a_no_baseline, fs=fs_val
+    # 4. Reamostragem fisiológica dinâmica para target_fs e target_samples (500 Hz / 5000 pontos)
+    step4_resampled = resample_ecg_signal(
+        step3_clipped,
+        orig_fs=fs_val,
+        target_fs=target_fs,
+        target_samples=target_samples,
+    )
+
+    # 5. Filtragem digital zero-phase na grade padronizada de 500 Hz
+    step5a_no_baseline = remove_baseline_wander_highpass(step4_resampled, fs=target_fs)
+    step5b_no_powerline = remove_powerline_interference_notch(
+        step5a_no_baseline, fs=target_fs
     )
     cnn_tensor_mv = remove_high_freq_muscle_noise_lowpass(
-        step4b_no_powerline, fs=fs_val
+        step5b_no_powerline, fs=target_fs, cutoff_hz=45.0
     )
 
     steps = {
         "raw_mv": step1_reordered,
-        "no_baseline_mv": step4a_no_baseline,
-        "no_powerline_mv": step4b_no_powerline,
+        "resampled_mv": step4_resampled,
+        "no_baseline_mv": step5a_no_baseline,
+        "no_powerline_mv": step5b_no_powerline,
         "clean_mv": cnn_tensor_mv,
-        "baseline_noise_mv": step3_clipped - step4a_no_baseline,
-        "high_freq_noise_mv": step4a_no_baseline - cnn_tensor_mv,
+        "baseline_noise_mv": step4_resampled - step5a_no_baseline,
+        "high_freq_noise_mv": step5a_no_baseline - cnn_tensor_mv,
     }
     return cnn_tensor_mv, steps, True
 

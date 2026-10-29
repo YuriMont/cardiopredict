@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 # Garante resolução do diretório raiz `src` mesmo quando executado diretamente
@@ -53,6 +54,19 @@ def process_single_exam(
         full_path = full_path.with_suffix("")
     hea_path = full_path.with_suffix(".hea")
     if not hea_path.exists():
+        path_str = str(full_path)
+        if "/1.0/" in path_str:
+            alt = Path(path_str.replace("/1.0/", "/"))
+            if alt.with_suffix(".hea").exists():
+                full_path = alt
+                hea_path = alt.with_suffix(".hea")
+        elif "/mimic-iv-ecg/" in path_str:
+            alt = Path(path_str.replace("/mimic-iv-ecg/", "/mimic-iv-ecg/1.0/"))
+            if alt.with_suffix(".hea").exists():
+                full_path = alt
+                hea_path = alt.with_suffix(".hea")
+
+    if not hea_path.exists():
         return ecg_uid, None, labels, weights, False
 
     try:
@@ -63,17 +77,12 @@ def process_single_exam(
             return ecg_uid, None, labels, weights, False
 
         # Garante exatas 5.000 amostras (10 segundos a 500 Hz)
-        n_samples = cnn_tensor.shape[0]
-        if n_samples < 5000:
-            padded = np.zeros((5000, 12), dtype=np.float32)
-            padded[:n_samples, :] = cnn_tensor
-            cnn_tensor = padded
-        elif n_samples > 5000:
-            cnn_tensor = cnn_tensor[:5000, :]
+        if cnn_tensor.shape[0] != 5000:
+            return ecg_uid, None, labels, weights, False
 
-        # Validação de amplitude máxima aberrante (> 15 mV)
+        # Validação de amplitude máxima aberrante (> 15 mV) e não finitos
         max_abs = float(np.max(np.abs(cnn_tensor)))
-        if max_abs > ABERRANT_MAX_AMPLITUDE_MV or np.isnan(max_abs):
+        if max_abs > ABERRANT_MAX_AMPLITUDE_MV or not np.isfinite(max_abs):
             return ecg_uid, None, labels, weights, False
 
         return ecg_uid, cnn_tensor.astype(np.float32), labels, weights, True
@@ -174,6 +183,7 @@ def export_split_to_h5(
     output_dir: Path | None = None,
     batch_size: int = 512,
     limit: int | None = None,
+    num_workers: int = 4,
 ) -> dict[str, int]:
     """Processa e exporta todos os registros de uma partição para arquivo HDF5."""
     target_db = Path(db_path) if db_path is not None else DEFAULT_DB_PATH
@@ -231,17 +241,23 @@ def export_split_to_h5(
         weights_to_write: list[list[float]] = []
         uids_to_write: list[str] = []
 
+        exam_batch: list[tuple[str, str, list[float], list[float]]] = []
         for row in rows:
             ecg_uid = str(row[0])
             rel_path = str(row[1])
             labels = [float(v) for v in row[2 : 2 + n_classes]]
             weights = [float(v) for v in row[2 + n_classes : 2 + 2 * n_classes]]
+            exam_batch.append((ecg_uid, rel_path, labels, weights))
 
-            uid, tensor, lbl, wgt, is_valid = process_single_exam(
-                (ecg_uid, rel_path, labels, weights)
-            )
+        # Processamento concorrente para maximizar throughput de CPU
+        if num_workers > 1:
+            with ThreadPoolExecutor(max_workers=num_workers) as executor:
+                processed_results = list(executor.map(process_single_exam, exam_batch))
+        else:
+            processed_results = [process_single_exam(item) for item in exam_batch]
+
+        for uid, tensor, lbl, wgt, is_valid in processed_results:
             total_processed += 1
-
             if is_valid and tensor is not None:
                 signals_to_write.append(tensor)
                 labels_to_write.append(lbl)
@@ -269,6 +285,21 @@ def export_split_to_h5(
         print(
             f"[{split_name.upper()}] Processados: {total_processed:,} | "
             f"Válidos: {total_valid:,} | Rejeitados: {total_rejected:,} ({rate:,.0f} exames/s)"
+        )
+
+    # Persistência de pos_weights para o balanceamento de classes na loss function
+    if total_valid > 0:
+        all_labels = np.asarray(h5_file["labels"], dtype=np.float32)
+        pos_counts = np.sum(all_labels == 1.0, axis=0)
+        neg_counts = float(total_valid) - pos_counts
+        pos_weights = np.where(
+            pos_counts > 0,
+            neg_counts / np.maximum(pos_counts, 1.0),
+            1.0,
+        ).astype(np.float32)
+        h5_file.attrs["pos_weights"] = pos_weights
+        h5_file.attrs["target_classes"] = np.array(
+            list(TARGET_CLASSES), dtype=h5py.string_dtype(encoding="ascii")
         )
 
     h5_file.close()
@@ -319,6 +350,12 @@ def main() -> None:
         default=None,
         help="Limite de exames para teste rápido",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help="Número de workers/threads concorrentes para processamento de sinal",
+    )
     args = parser.parse_args()
 
     splits = ["train", "val", "test"] if args.split == "all" else [str(args.split)]
@@ -331,6 +368,7 @@ def main() -> None:
             output_dir=Path(args.output_dir) if args.output_dir else None,
             batch_size=args.batch_size,
             limit=args.limit,
+            num_workers=args.workers,
         )
         print(
             f"Concluído {sp}: {res['valid']:,} salvos no HDF5 ({res['rejected']:,} rejeitados)."

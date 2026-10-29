@@ -29,6 +29,10 @@ from core.constants import (
 from data.dataset import CardioECGDataset
 from processing.measurements import clean_machine_measurements
 from processing.ontology import map_exam_statements
+from processing.signal import (
+    interpolate_missing_and_validate,
+    resample_ecg_signal,
+)
 
 
 class TestDataPipeline(unittest.TestCase):
@@ -189,6 +193,57 @@ class TestDataPipeline(unittest.TestCase):
         self.assertEqual(sig.dtype, torch.float32)
         self.assertEqual(lbl.dtype, torch.float32)
         self.assertEqual(wgt.dtype, torch.float32)
+
+        # Testa a padronização Z-score por derivação
+        ds_std = CardioECGDataset(
+            split="test", standardize=True, standardize_mode="per_lead"
+        )
+        sig_std, _, _ = ds_std[0]
+        # Média próxima a 0 e desvio padrão próximo a 1 em cada uma das 12 derivações
+        lead_means = sig_std.mean(dim=-1)
+        lead_stds = sig_std.std(dim=-1)
+        self.assertTrue(
+            torch.allclose(lead_means, torch.zeros_like(lead_means), atol=1e-3)
+        )
+        self.assertTrue(
+            torch.allclose(lead_stds, torch.ones_like(lead_stds), atol=1e-2)
+        )
+
+    def test_signal_resampling(self) -> None:
+        """Valida que registros com frequências distintas (ex: 100 Hz e 1000 Hz) são convertidos para 5000 amostras a 500 Hz."""
+        # Simula ECG de 100 Hz (10 segundos = 1000 amostras)
+        sig_100hz = np.ones((1000, 12), dtype=np.float32)
+        res_500hz = resample_ecg_signal(
+            sig_100hz, orig_fs=100.0, target_fs=500.0, target_samples=5000
+        )
+        self.assertEqual(res_500hz.shape, (5000, 12))
+        self.assertEqual(res_500hz.dtype, np.float32)
+
+        # Simula ECG de 1000 Hz (10 segundos = 10000 amostras)
+        sig_1000hz = np.ones((10000, 12), dtype=np.float32)
+        res_down = resample_ecg_signal(
+            sig_1000hz, orig_fs=1000.0, target_fs=500.0, target_samples=5000
+        )
+        self.assertEqual(res_down.shape, (5000, 12))
+
+    def test_signal_nonfinite_interpolation(self) -> None:
+        """Valida a robustez contra valores não finitos (+inf, -inf, nan) e detecção de saturação mecânica."""
+        sig = np.random.randn(5000, 12).astype(np.float32)
+        # Injeta 50 amostras (1%) com inf e nan na derivação 0
+        sig[10:30, 0] = np.nan
+        sig[100:120, 0] = np.inf
+        sig[200:210, 0] = -np.inf
+
+        cleaned, is_valid = interpolate_missing_and_validate(sig)
+        self.assertTrue(is_valid)
+        self.assertTrue(np.all(np.isfinite(cleaned)))
+        self.assertFalse(np.isnan(cleaned).any())
+
+        # Injeta excesso de não finitos (> 5%) para garantir rejeição
+        bad_sig = np.random.randn(5000, 12).astype(np.float32)
+        bad_sig[:500, 1] = np.nan  # 10%
+        _, is_bad_valid = interpolate_missing_and_validate(bad_sig)
+        self.assertFalse(is_bad_valid)
 
 
 if __name__ == "__main__":

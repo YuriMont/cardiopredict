@@ -9,6 +9,8 @@ Este diretório reúne as explicações aprofundadas, conceituais e acessíveis 
 ### 🚀 Visão Geral e Arquitetura da Esteira
 * 🫀 **[Pipeline de Processamento e Tratamento de Dados](pipeline_processamento_dados.md)**:
   * Guia técnico e arquitetural unificado de ponta a ponta: ingestão das bases MIMIC-IV-ECG e PTB-XL, limpeza de códigos sentinela e limites AHA no DuckDB, filtragem digital de biossinais (0.5–45 Hz, notch 50/60 Hz, escala em mV), motor ontológico multilabel (30 classes), particionamento no nível do paciente (80/10/10), contêineres HDF5 e integração com PyTorch.
+* 🌐 **[Comparativo das Bases de Dados e Estratégia de Harmonização](comparativo_harmonizacao_bases_dados.md)**:
+  * Análise aprofundada das disparidades entre MIMIC-IV-ECG (EUA) e PTB-XL (Alemanha): texto livre vs códigos SCP-ECG, redes 50 Hz vs 60 Hz, microvolts vs milivolts, resoluções de amostragem e a esteira de unificação física e ontológica.
 
 ### ⚙️ 1. Critérios de Qualidade e Limitadores Físicos/Biológicos
 * ⚡ **[Limitadores de Integridade Física do Sinal](limitadores_qualidade_sinal.md)**:

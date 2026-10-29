@@ -28,6 +28,7 @@ from plotly.subplots import make_subplots
 from core.constants import (
     DEFAULT_DB_PATH,
     DERIVED_INTERVAL_LIMITS,
+    MIMIC_DIR,
     PHYSIOLOGICAL_LIMITS,
     PROCESSED_DATA_DIR,
     STANDARD_LEADS,
@@ -215,22 +216,21 @@ def list_available_exams_with_signals(
     """
     df_ptb = con.execute(q_ptb).fetchdf()
 
-    # 2. Exames do MIMIC que possuem arquivos físicos .hea presentes localmente
-    import glob
+    # 2. Exames do MIMIC que possuem arquivos físicos .hea/.dat presentes localmente
+    mimic_files_dir = MIMIC_DIR / "files"
+    mimic_uids: list[str] = []
 
-    mimic_heas = glob.glob("data/mimic-iv-ecg/1.0/files/p1086/*/*/*.hea")[
-        :limit_per_dataset
-    ]
-    if not mimic_heas:
-        mimic_heas = glob.glob("data/mimic-iv-ecg/1.0/files/*/*/*/*.hea")[
-            :limit_per_dataset
-        ]
-
-    mimic_uids = [
-        f"mimic_{Path(p).stem}"
-        for p in mimic_heas
-        if Path(p).with_suffix(".dat").exists()
-    ]
+    if mimic_files_dir.exists():
+        for p_sub in sorted(mimic_files_dir.iterdir()):
+            if not p_sub.is_dir():
+                continue
+            for hea_path in p_sub.glob("*/*/*.hea"):
+                if hea_path.with_suffix(".dat").exists():
+                    mimic_uids.append(f"mimic_{hea_path.stem}")
+                    if len(mimic_uids) >= limit_per_dataset:
+                        break
+            if len(mimic_uids) >= limit_per_dataset:
+                break
 
     if mimic_uids:
         q_mimic = f"""

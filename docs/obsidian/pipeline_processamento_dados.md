@@ -32,8 +32,9 @@ flowchart TD
         RAW_WFDB["Arquivos Brutos WFDB (.hea/.dat)"] --> WFDB_READ["Leitura em Unidades Físicas (wfdb)"]
         WFDB_READ --> LEAD_ORDER["Reordenação Anatômica (12 Derivações)"]
         LEAD_ORDER --> SCALE_MV["Padronização de Ganho para mV"]
-        SCALE_MV --> NAN_CHECK["Interpolação de NaNs (Tolerância <= 5%)"]
-        NAN_CHECK --> FILTERS["Filtro Passa-Faixa (0.5–45 Hz Butterworth)\n+ Filtro Notch Duplo (50/60 Hz)"]
+        SCALE_MV --> NAN_CHECK["Blindagem contra Não-Finitos (NaN/Inf <= 5%)"]
+        NAN_CHECK --> RESAMPLE["Reamostragem Dinâmica (Fourier -> 5000 amostras @ 500 Hz)"]
+        RESAMPLE --> FILTERS["Filtro Passa-Faixa (0.5–45 Hz Butterworth)\n+ Filtro Notch Duplo (50/60 Hz)"]
         FILTERS --> QA_CHECK{"Controle de Qualidade:\nFlatline std < 0.1 uV?\nAmplitude > 15 mV?"}
         QA_CHECK -- "Inválido" --> REJECT["Descarte / Flag is_signal_valid=False"]
         QA_CHECK -- "Válido" --> CLEAN_SIGNAL["Tensor 1D Padronizado (5000, 12)"]
@@ -63,7 +64,7 @@ Os metadados tabulares e diagnósticos de ambas as bases são consolidados em um
 
 ### Principais Tabelas Relacionais:
 1. `patients`: Cadastro unificado dos pacientes (`patient_uid`, sexo, idade calculada no exame).
-2. `ecg_records`: Catálogo mestre dos 821.834 exames com metadados do hardware (frequência de amostragem original, caminho relativo do arquivo WFDB, partição `split`, indicador `is_signal_valid`).
+2. `ecg_records`: Catálogo mestre dos 821.834 exames com metadados do hardware (frequência de amostragem original, caminho relativo do arquivo WFDB, partição `split`, indicador `is_signal_valid`). No PTB-XL, vincula-se exclusivamente a versão de alta resolução `records500/` (`filename_hr` a 500 Hz), ignorando a pasta redundante `records100/` para evitar duplicatas artificiais dos mesmos 21.837 exames.
 3. `ecg_measurements`: Intervalos clínicos computados pelo algoritmo do eletrocardiógrafo (frequência cardíaca, intervalo PR, duração QRS, intervalo QT, QT corrigido e eixos elétricos frontais).
 4. `ecg_labels`: Declarações diagnósticas originais por exame (laudos de texto livre do MIMIC e dicionários de termos SCP do PTB-XL).
 5. `ecg_processed_labels`: Matriz multilabel harmonizada (30 colunas de rótulo binário e 30 colunas de pesos de incerteza).
@@ -198,10 +199,11 @@ No ambiente hospitalar, um mesmo paciente frequentemente realiza múltiplos exam
 Se os exames fossem particionados aleatoriamente, exames do mesmo paciente estariam presentes no Treino e no Teste simultaneamente, criando uma ilusão de alta acurácia (o modelo reconhece o "formato do tórax do paciente", e não a patologia cardíaca).
 
 ### Divisão Estabelecida:
-* **Treino (`train`)**: 80% dos pacientes
-* **Validação (`val`)**: 10% dos pacientes
-* **Teste (`test`)**: 10% dos pacientes
+* **Treino (`train`)**: 80% dos pacientes (657.689 exames — 97,35% MIMIC / 2,65% PTB-XL)
+* **Validação (`val`)**: 10% dos pacientes (81.697 exames — 97,33% MIMIC / 2,67% PTB-XL)
+* **Teste (`test`)**: 10% dos pacientes (82.448 exames — 97,33% MIMIC / 2,67% PTB-XL)
 * **Garantia matemática**: $\text{Pacientes}(\text{Treino}) \cap \text{Pacientes}(\text{Validação}) \cap \text{Pacientes}(\text{Teste}) = \emptyset$.
+* **Benchmark Duplo**: O teste é avaliado no conjunto Global Transcontinental (82.448 exames) e também isoladamente na Dobra 10 do PTB-XL (2.198 exames) para comparação direta com os artigos do estado da arte internacional (PhysioNet Challenge).
 
 ---
 
@@ -238,11 +240,13 @@ Para conectar os contêineres HDF5 às arquiteturas de aprendizado profundo (Res
 ### Características do `CardioECGDataset`:
 * **Abertura Sob Demanda (*Lazy Initialization*)**: Evita travamentos de *fork* e conflitos de *file descriptor* quando o PyTorch utiliza múltiplos processos de leitura (`num_workers > 0`).
 * **Complexidade $O(1)$ de Acesso**: Leitura direta por índice na fatia do HDF5 sem necessidade de desserializar arquivos intermediários.
-* **Retorno Padrão**:
-  * `signal`: Tensor PyTorch `torch.FloatTensor` com shape `(5000, 12)`.
-  * `label`: Tensor PyTorch `torch.FloatTensor` com shape `(30,)`.
-  * `weight`: Tensor PyTorch `torch.FloatTensor` com shape `(30,)`.
-  * `uid`: String do identificador do exame.
+* **Formato de Entrada Adaptado (Channels-First)**: Retorna o tensor de sinal transposto para `(12, 5000)` (onde 12 são os canais anatômicos e 5000 as etapas temporais), formato canônico consumido pelas camadas convolucionais 1D e SSMs.
+* **Normalização Z-Score Opcional (`standardize=True`)**: Permite normalização por derivação `(x - mean) / (std + 1e-6)` ou global para estabilização de gradientes em camadas densas e mecanismos de atenção.
+* **Balanceamento Automático (`dataset.pos_weights`)**: Fornece o vetor de pesos positivos pré-calculado no contêiner HDF5 para parametrização direta de `torch.nn.BCEWithLogitsLoss(pos_weight=...)`.
+* **Retorno Padrão por Amostra**:
+  * `signal_tensor`: `torch.Tensor` float32 de formato `(12, 5000)`.
+  * `label_tensor`: `torch.Tensor` float32 de formato `(30,)`.
+  * `weight_tensor`: `torch.Tensor` float32 de formato `(30,)` (pesos de confiança e incerteza clínica).
 
 ---
 
